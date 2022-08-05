@@ -20,6 +20,7 @@ int id = 0;
 task_t *currentTask;//, *oldTask;
 task_t taskMain, taskDispatcher;
 queue_t *userQueue;
+unsigned int relogio = 0;
 
 // estrutura que define um tratador de sinal (deve ser global ou static)
 struct sigaction action ;
@@ -31,6 +32,7 @@ void dispatcher();
 task_t *scheduler();
 void task_setprio (task_t *task, int prio);
 void treat_tick(int signum);
+unsigned int systime();
 
 // Inicializa o sistema operacional; deve ser chamada no inicio do main()
 void ppos_init()
@@ -111,11 +113,12 @@ int task_create(task_t *task, void (*start_func)(void *), void *arg)
 
     task->status = PRONTA;
     task->preemptable = 1; // task de usuario
+    task->nascimento = systime();
 
     task_setprio(task, 0);
     // task->pd = task->pe;
 
-    if(id>2)
+    if(id>2) // nao eh main nem dispatcher?
         queue_append(&userQueue, (queue_t*)task);
 
     return task->id; 
@@ -126,6 +129,8 @@ void task_exit (int exit_code)
 {
     if(currentTask == &taskDispatcher)
     {
+        printf("Task %d exit: execution time %u ms, processor time %4u ms, %u activations\n",
+                            taskDispatcher.id, (systime() - taskDispatcher.nascimento), taskDispatcher.tempo_proc, taskDispatcher.ativacoes);
         task_switch(&taskMain);
         return;
     }
@@ -144,6 +149,8 @@ int task_switch (task_t *task)
     oldTask = currentTask;
     currentTask = task;
 
+    task->ativacoes++;
+
     return swapcontext(&(oldTask->context), &(task->context));
 }
 
@@ -160,13 +167,19 @@ void task_yield()
 
 void dispatcher()
 {
+    unsigned int aux = systime();
     while ( queue_size(userQueue) > 0 )
     {
         task_t *nextTask = scheduler();
 
         if (nextTask != NULL)
         {
+            // nextTask->ativacoes++;
+            taskDispatcher.tempo_proc += systime() - aux;
+            aux = systime();
             task_switch(nextTask);
+            nextTask->tempo_proc += systime() - aux;
+            aux = systime();
 
             switch(nextTask->status)
             {
@@ -175,6 +188,8 @@ void dispatcher()
                     break;
 
                 case(TERMINADA):
+                    printf("Task %d exit: execution time %u ms, processor time %u ms, %u activations\n",
+                            nextTask->id, (systime() - nextTask->nascimento), nextTask->tempo_proc, nextTask->ativacoes);
                     queue_remove(&userQueue, (queue_t*)nextTask);
                     free(nextTask->context.uc_stack.ss_sp);
                     break;
@@ -234,6 +249,8 @@ int task_getprio (task_t *task)
 
 void treat_tick (int signum)
 {
+    relogio++;
+
     if(currentTask->preemptable)
     {
         currentTask->quantum-- ;
@@ -242,4 +259,9 @@ void treat_tick (int signum)
             task_yield();
     }
 
+}
+
+unsigned int systime()
+{
+    return relogio;
 }

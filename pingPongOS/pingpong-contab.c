@@ -2,13 +2,13 @@
 // Prof. Carlos A. Maziero, DINF UFPR
 // Versão 1.4 -- Janeiro de 2022
 
-// Teste da preempção por tempo
+// Teste da contabilização - tarefas de mesma prioridade
 
 #include <stdio.h>
 #include <stdlib.h>
 #include "ppos.h"
 
-#define WORKLOAD 20000
+#define WORKLOAD 40000
 
 task_t Pang, Peng, Ping, Pong, Pung ;
 
@@ -27,15 +27,9 @@ int hardwork (int n)
 // corpo das threads
 void Body (void * arg)
 {
-   int i ;
-
-   printf ("%s: inicio\n", (char *) arg) ;
-   for (i=0; i<10; i++)
-   {
-      printf ("%s: %d\n", (char *) arg, i) ;
-      hardwork (WORKLOAD) ;
-   }
-   printf ("%s: fim\n", (char *) arg) ;
+   printf ("%s: inicio em %4d ms\n", (char *) arg, systime()) ;
+   hardwork (WORKLOAD) ;
+   printf ("%s: fim    em %4d ms\n", (char *) arg, systime()) ;
    task_exit (0) ;
 }
 
