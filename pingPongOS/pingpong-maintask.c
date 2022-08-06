@@ -2,7 +2,7 @@
 // Prof. Carlos A. Maziero, DINF UFPR
 // Versão 1.4 -- Janeiro de 2022
 
-// Teste da contabilização - tarefas de mesma prioridade
+// Teste da tarefa main escalonável
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,9 +35,9 @@ void Body (void * arg)
 
 int main (int argc, char *argv[])
 {
-   printf ("main: inicio\n");
-
    ppos_init () ;
+
+   printf ("main: inicio em %4d ms\n", systime()) ;
 
    task_create (&Pang, Body, "    Pang") ;
    task_create (&Peng, Body, "        Peng") ;
@@ -45,8 +45,10 @@ int main (int argc, char *argv[])
    task_create (&Pong, Body, "                Pong") ;
    task_create (&Pung, Body, "                    Pung") ;
 
-   task_yield () ;
+   hardwork (0.75*WORKLOAD) ;
 
-   printf ("main: fim\n");
-   exit (0);
+   printf ("main: fim    em %4d ms\n", systime()) ;
+   task_exit (0);
+
+   exit (0) ;
 }

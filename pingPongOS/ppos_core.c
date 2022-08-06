@@ -43,13 +43,14 @@ void ppos_init()
     taskMain.id = id; // contador global?
     id++;
 
-    taskMain.next = taskMain.prev = &taskMain;    
+    // taskMain.next = taskMain.prev = &taskMain;   
+    taskMain.status = PRONTA;
+    taskMain.preemptable = 1; // de usuario
+    taskMain.nascimento = systime(); 
+
+    queue_append(&userQueue, (queue_t*)&taskMain);
 
     currentTask = &taskMain;
-
-
-    task_create(&(taskDispatcher), &dispatcher, 0);
-    taskDispatcher.preemptable = 0 ; // passar isso como argumento da funcao task_create??
 
     /* desativa o buffer da saida padrao (stdout), usado pela função printf */
     setvbuf (stdout, 0, _IONBF, 0);
@@ -79,6 +80,8 @@ void ppos_init()
         exit (1) ;
     }
 
+    task_create(&(taskDispatcher), &dispatcher, 0);
+    // taskDispatcher.preemptable = 0 ; // passar isso como argumento da funcao task_create??
 
     return;
 }
@@ -112,7 +115,10 @@ int task_create(task_t *task, void (*start_func)(void *), void *arg)
     id++;
 
     task->status = PRONTA;
-    task->preemptable = 1; // task de usuario
+
+
+    // task->preemptable = 1; // task de usuario
+
     task->nascimento = systime();
 
     task_setprio(task, 0);
@@ -120,6 +126,14 @@ int task_create(task_t *task, void (*start_func)(void *), void *arg)
 
     if(id>2) // nao eh main nem dispatcher?
         queue_append(&userQueue, (queue_t*)task);
+
+    if(task == &taskDispatcher)
+    {
+        task->preemptable = 0;
+        task_switch(task);
+    }
+    else
+        task->preemptable = 1;
 
     return task->id; 
 }			
@@ -131,7 +145,7 @@ void task_exit (int exit_code)
     {
         printf("Task %d exit: execution time %u ms, processor time %4u ms, %u activations\n",
                             taskDispatcher.id, (systime() - taskDispatcher.nascimento), taskDispatcher.tempo_proc, taskDispatcher.ativacoes);
-        task_switch(&taskMain);
+        // task_switch(&taskMain);
         return;
     }
 
