@@ -19,7 +19,7 @@
 int id = 0;
 task_t *currentTask;//, *oldTask;
 task_t taskMain, taskDispatcher;
-queue_t *userQueue;
+queue_t *userQueue, *suspendQueue;
 unsigned int relogio = 0;
 
 // estrutura que define um tratador de sinal (deve ser global ou static)
@@ -33,6 +33,7 @@ task_t *scheduler();
 void task_setprio (task_t *task, int prio);
 void treat_tick(int signum);
 unsigned int systime();
+void task_yield();
 
 // Inicializa o sistema operacional; deve ser chamada no inicio do main()
 void ppos_init()
@@ -150,7 +151,7 @@ void task_exit (int exit_code)
     }
 
     currentTask->status = TERMINADA;
-    task_switch(&taskDispatcher);
+    task_yield();
 
     return;
 }
@@ -278,4 +279,32 @@ void treat_tick (int signum)
 unsigned int systime()
 {
     return relogio;
+}
+
+int task_join (task_t *task)
+{
+    if(task == NULL || task->status == TERMINADA)
+        return -1;
+
+    task_suspend(suspendQueue);
+    return
+}
+
+void task_suspend(task_t **queue)
+{
+    queue_remove(userQueue, currentTask);
+    currentTask->status = SUSPENSA;
+    queue_append(queue, currentTask);
+    task_yield();
+}
+
+void task_resume(task_t *task, task_t **queue)
+{
+    if(queue)
+    {
+        queue_remove(queue, task);     
+        task->status = PRONTA;
+        queue_append(userQueue, task);
+    }
+    
 }
