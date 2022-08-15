@@ -19,9 +19,11 @@ typedef struct task_t
   short preemptable ;			// pode ser preemptada?
   short pd, pe ; // prioridade estatica e dinamica
   int quantum ;
-  unsigned int nascimento;
-  unsigned int tempo_proc;
-  unsigned int ativacoes;
+  unsigned int nascimento ;
+  unsigned int tempo_proc ;
+  unsigned int ativacoes ;
+  int encerramento ;
+  struct task_t *esperando ;
    // ... (outros campos serão adicionados mais tarde)
 } task_t ;
 

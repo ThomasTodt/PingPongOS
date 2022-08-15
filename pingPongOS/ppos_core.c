@@ -147,10 +147,20 @@ void task_exit (int exit_code)
         printf("Task %d exit: execution time %u ms, processor time %4u ms, %u activations\n",
                             taskDispatcher.id, (systime() - taskDispatcher.nascimento), taskDispatcher.tempo_proc, taskDispatcher.ativacoes);
         // task_switch(&taskMain);
-        return;
+        return; // exit_code;
     }
 
+    currentTask->encerramento = exit_code;
     currentTask->status = TERMINADA;
+
+    queue_t *tmp = suspendQueue;
+    for(int i=0; i < queue_size(suspendQueue); i++)
+    {
+        if(((task_t*)tmp)->esperando == currentTask)
+            task_resume((task_t*)tmp, (task_t**)&suspendQueue);
+        tmp = tmp->next;
+    }
+
     task_yield();
 
     return;
@@ -283,28 +293,34 @@ unsigned int systime()
 
 int task_join (task_t *task)
 {
+    // printf("[JOIN]\n");
     if(task == NULL || task->status == TERMINADA)
         return -1;
 
-    task_suspend(suspendQueue);
-    return
+    currentTask->esperando = task; // soh pode esperar uma de cada vez mesmo
+    task_suspend((task_t**)&suspendQueue);
+    return task->encerramento;
 }
 
 void task_suspend(task_t **queue)
 {
-    queue_remove(userQueue, currentTask);
+    // printf("[SUSPEND]\n");
+    queue_remove(&userQueue, (queue_t*)currentTask);
     currentTask->status = SUSPENSA;
-    queue_append(queue, currentTask);
+    // printf("retirou da fila\n");
+    // printf("%d\n", queue);
+    queue_append((queue_t**)queue, (queue_t*)currentTask);
     task_yield();
 }
 
 void task_resume(task_t *task, task_t **queue)
 {
+    // printf("[RESUME]\n");
     if(queue)
     {
-        queue_remove(queue, task);     
+        queue_remove((queue_t**)queue, (queue_t*)task);     
         task->status = PRONTA;
-        queue_append(userQueue, task);
+        queue_append(&userQueue, (queue_t*)task);
     }
     
 }
