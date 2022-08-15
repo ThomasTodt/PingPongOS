@@ -15,11 +15,12 @@
 #define SUSPENSA 2
 #define ALPHA -1
 #define QUANTUM 20
+#define CHECA_DORM 5
 
 int id = 0;
 task_t *currentTask;//, *oldTask;
 task_t taskMain, taskDispatcher;
-queue_t *userQueue, *suspendQueue;
+queue_t *q_prontas, *q_suspensas, *q_dormitorio;
 unsigned int relogio = 0;
 
 // estrutura que define um tratador de sinal (deve ser global ou static)
@@ -34,6 +35,7 @@ void task_setprio (task_t *task, int prio);
 void treat_tick(int signum);
 unsigned int systime();
 void task_yield();
+void gerencia_dormitorio();
 
 // Inicializa o sistema operacional; deve ser chamada no inicio do main()
 void ppos_init()
@@ -49,7 +51,7 @@ void ppos_init()
     taskMain.preemptable = 1; // de usuario
     taskMain.nascimento = systime(); 
 
-    queue_append(&userQueue, (queue_t*)&taskMain);
+    queue_append(&q_prontas, (queue_t*)&taskMain);
 
     currentTask = &taskMain;
 
@@ -126,7 +128,7 @@ int task_create(task_t *task, void (*start_func)(void *), void *arg)
     // task->pd = task->pe;
 
     if(id>2) // nao eh main nem dispatcher?
-        queue_append(&userQueue, (queue_t*)task);
+        queue_append(&q_prontas, (queue_t*)task);
 
     if(task == &taskDispatcher)
     {
@@ -153,11 +155,11 @@ void task_exit (int exit_code)
     currentTask->encerramento = exit_code;
     currentTask->status = TERMINADA;
 
-    queue_t *tmp = suspendQueue;
-    for(int i=0; i < queue_size(suspendQueue); i++)
+    queue_t *tmp = q_suspensas;
+    for(int i=0; i < queue_size(q_suspensas); i++)
     {
         if(((task_t*)tmp)->esperando == currentTask)
-            task_resume((task_t*)tmp, (task_t**)&suspendQueue);
+            task_resume((task_t*)tmp, (task_t**)&q_suspensas);
         tmp = tmp->next;
     }
 
@@ -193,9 +195,11 @@ void task_yield()
 void dispatcher()
 {
     unsigned int aux = systime();
-    while ( queue_size(userQueue) > 0 )
+    while ( queue_size(q_prontas) > 0 || queue_size(q_suspensas) > 0)
     {
+        printf("...\n");
         task_t *nextTask = scheduler();
+        printf("pos-sched\n");
 
         if (nextTask != NULL)
         {
@@ -215,7 +219,7 @@ void dispatcher()
                 case(TERMINADA):
                     printf("Task %d exit: execution time %u ms, processor time %u ms, %u activations\n",
                             nextTask->id, (systime() - nextTask->nascimento), nextTask->tempo_proc, nextTask->ativacoes);
-                    queue_remove(&userQueue, (queue_t*)nextTask);
+                    queue_remove(&q_prontas, (queue_t*)nextTask);
                     free(nextTask->context.uc_stack.ss_sp);
                     break;
 
@@ -224,6 +228,12 @@ void dispatcher()
                     break;
             }
         }
+
+        if( !(systime() % CHECA_DORM) ) // a cada quanto tempo checa o dormitorio
+            gerencia_dormitorio();
+
+        printf("PRONTAS: %d\n", queue_size(q_prontas));
+        printf("SUSPENSAS: %d\n", queue_size(q_suspensas));
     }
 
     task_exit(0);
@@ -231,9 +241,12 @@ void dispatcher()
 
 task_t *scheduler()
 {
-    task_t *next = (task_t*)userQueue;
+    if(!q_prontas)
+        return NULL;
 
-    task_t *aux = (task_t*)userQueue; // retorna task na primeira posicao
+    task_t *next = (task_t*)q_prontas;
+
+    task_t *aux = (task_t*)q_prontas; // retorna task na primeira posicao
 
     do
     {
@@ -243,7 +256,7 @@ task_t *scheduler()
         aux->pd += ALPHA;
         aux = aux->next;
 
-    } while((task_t*)userQueue != aux);
+    } while((task_t*)q_prontas != aux);
     
 
     next->pd = next->pe; // reseta o envelhecimento
@@ -298,29 +311,62 @@ int task_join (task_t *task)
         return -1;
 
     currentTask->esperando = task; // soh pode esperar uma de cada vez mesmo
-    task_suspend((task_t**)&suspendQueue);
+    task_suspend((task_t**)&q_suspensas);
     return task->encerramento;
 }
 
 void task_suspend(task_t **queue)
 {
-    // printf("[SUSPEND]\n");
-    queue_remove(&userQueue, (queue_t*)currentTask);
+    // printf("[SUSPEND] entrou\n");
+    printf("[SUSPEND]\n");
+    queue_remove(&q_prontas, (queue_t*)currentTask);
     currentTask->status = SUSPENSA;
     // printf("retirou da fila\n");
     // printf("%d\n", queue);
     queue_append((queue_t**)queue, (queue_t*)currentTask);
+    // printf("[SUSPEND] saiu\n");
     task_yield();
 }
 
 void task_resume(task_t *task, task_t **queue)
 {
-    // printf("[RESUME]\n");
+    printf("[RESUME]\n");
     if(queue)
     {
         queue_remove((queue_t**)queue, (queue_t*)task);     
         task->status = PRONTA;
-        queue_append(&userQueue, (queue_t*)task);
+        queue_append(&q_prontas, (queue_t*)task);
     }
-    
+}
+
+void task_sleep(int t)
+{
+    printf("[SLEEP] entrou (%d)\n", currentTask->id);
+    // printf("TASK SLEEP (%d)\n", currentTask->id);
+    // printf("tamanho prontas: %d\n", queue_size(q_prontas));
+    // queue_remove(&q_prontas, (queue_t*)currentTask);
+    // queue_append(&q_dormitorio, (queue_t*)currentTask);
+
+    currentTask->acordar = systime() + t;
+
+    task_suspend((task_t**)&q_dormitorio);
+
+    // printf("[SLEEP] saiu (%d)\n", currentTask->id);
+}
+
+void gerencia_dormitorio()
+{
+    printf("[GERENCIA] entrou\n");
+    queue_t *tmp = q_dormitorio;
+    for(int i=0; i < queue_size(q_dormitorio); i++)
+    {
+        if(((task_t*)tmp)->acordar <= systime()) // se ja ta na hora ou passou de acordar
+        {
+            // printf("HORA DE ACORDAR\n");
+            queue_remove(&q_dormitorio, tmp);
+            queue_append(&q_prontas, tmp);
+        }
+        tmp = tmp->next;
+    }
+    printf("[GERENCIA] saiu\n");
 }

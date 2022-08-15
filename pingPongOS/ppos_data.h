@@ -24,6 +24,7 @@ typedef struct task_t
   unsigned int ativacoes ;
   int encerramento ;
   struct task_t *esperando ;
+  unsigned int acordar ;
    // ... (outros campos serão adicionados mais tarde)
 } task_t ;
 
