@@ -22,6 +22,7 @@ void produtor(void *arg)
 
         buff_item *item = malloc(sizeof(buff_item));
         item->num = rand() % 100;
+        item->next = item->prev = NULL;
         // printf("%p\n", item);
 
         sem_down (&s_vaga);
