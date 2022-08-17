@@ -201,7 +201,9 @@ void task_yield()
 void dispatcher()
 {
     unsigned int aux = systime();
-    while ( queue_size(q_prontas) > 0 || queue_size(q_suspensas) > 0)
+    while ( queue_size(q_prontas) > 0 
+            || queue_size(q_suspensas) > 0
+            || queue_size(q_dormitorio) > 0)
     {
         task_t *nextTask = scheduler();
 
