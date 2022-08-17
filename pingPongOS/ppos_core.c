@@ -30,6 +30,9 @@ struct sigaction action ;
 // estrutura de inicialização to timer
 struct itimerval timer ;
 
+// para o TSL do semaforo
+int lock = 0;
+
 void dispatcher();
 task_t *scheduler();
 void task_setprio (task_t *task, int prio);
@@ -37,6 +40,8 @@ void treat_tick(int signum);
 unsigned int systime();
 void task_yield();
 void gerencia_dormitorio();
+void enter_cs (int *lock);
+void leave_cs (int *lock);
 
 // Inicializa o sistema operacional; deve ser chamada no inicio do main()
 void ppos_init()
@@ -312,9 +317,14 @@ int task_join (task_t *task)
 
 void task_suspend(task_t **queue)
 {
+    enter_cs(&lock);
+
     queue_remove(&q_prontas, (queue_t*)currentTask);
     currentTask->status = SUSPENSA;
     queue_append((queue_t**)queue, (queue_t*)currentTask);
+
+    leave_cs(&lock);
+
     task_yield();
 }
 
@@ -348,4 +358,134 @@ void gerencia_dormitorio()
         }
         tmp = tmp->next;
     }
+}
+
+void enter_cs (int *lock)
+{
+    // printf("        entrou lock\n");
+     // atomic OR (Intel macro for GCC)
+    while (__sync_fetch_and_or (lock, 1)) ;   // busy waiting
+    // printf("        saiu lock\n");
+}
+ 
+void leave_cs (int *lock)
+{
+    // printf("        entrou leave\n");
+    (*lock) = 0 ;
+    // printf("        saiu leave\n");
+}
+
+int sem_create (semaphore_t *s, int value)
+{
+    // printf("entrou create\n");
+
+    if(!s || s->existe == 1)
+    {
+        return -1;
+    } 
+
+
+    s->contador = value;
+    s->fila = NULL;
+
+    s->existe = 1; // jeito melhor de checar se existe?
+
+    // s->lock = 0;
+
+    // enter_cs(lock);
+    if (s->contador != value)
+        return -1;
+
+    // leave_cs(&(lock));
+    // printf("saiu create\n");
+    return 0;
+}
+
+int sem_down (semaphore_t *s)
+{
+    // printf("    entrou down\n");
+    enter_cs(&(lock));
+
+    if (!s || s->existe != 1)
+    {
+        // printf("erro down\n");
+        leave_cs(&lock);
+        return -1;
+    }
+    // printf("contador: %d\n", s->contador);
+    int conta = s->contador;
+    leave_cs(&lock);
+
+    if ((conta - 1) < 0)
+    {
+        task_suspend(&(s->fila));
+    }
+
+    enter_cs(&lock);
+    s->contador--;
+    // printf("contador: %d\n", s->contador);
+
+    if (!s || !(s->existe)) //semaforo foi destruido
+    {
+        leave_cs(&lock);
+        return -1;
+    }
+
+    leave_cs(&(lock));
+    // printf("    saiu down\n");
+
+    return 0;
+}
+
+int sem_up (semaphore_t *s)
+{
+    // printf("    entrou up: %d\n", lock);
+    enter_cs(&(lock));
+    // printf("aqui\n");
+    if (!s || s->existe != 1)
+    {
+        leave_cs(&lock);
+        // printf("erro up\n");
+        return -1;
+    }
+
+    // printf("aqui\n");
+    s->contador++;
+    // printf("contador: %d\n", s->contador);
+    // printf("aqui\n");
+    if (queue_size((queue_t*)s->fila))
+        task_resume(s->fila, &(s->fila));
+    // printf("depois\n");
+    leave_cs(&(lock));
+
+    // printf("    saiu up\n");
+    return 0;
+}
+
+int sem_destroy (semaphore_t *s)
+{
+    // printf("entrou destroy\n");
+    enter_cs(&(lock));
+
+    if (!s || s->existe != 1)
+        return -1;
+
+    s->existe = 0; // util pra se a tarefa perder o processador, mas ja tiver acordado uma outra antes de setar s como NULL
+
+    while (s->fila) // acorda cada tarefa na fila do semaforo
+    {
+        task_resume(s->fila, &(s->fila));
+    }
+
+    if (s->fila)
+        return -1;
+
+
+    s = NULL;
+    if (s)
+        return -1;
+
+    leave_cs(&(lock));
+    // printf("saiu destroy: %d\n", lock);
+    return 0;
 }

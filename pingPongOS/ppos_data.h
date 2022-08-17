@@ -32,6 +32,10 @@ typedef struct task_t
 typedef struct
 {
   // preencher quando necessário
+  int contador;
+  task_t *fila;
+  int existe;
+  int lock;
 } semaphore_t ;
 
 // estrutura que define um mutex
