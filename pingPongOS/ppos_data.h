@@ -51,8 +51,13 @@ typedef struct
 } barrier_t ;
 
 // estrutura que define uma fila de mensagens
-typedef struct
+typedef struct mqueue_t
 {
+  struct mqueue_t *prev, *next ;		// ponteiros para usar em filas
+  // int capacidade ;
+  int msg_size ;
+  void *msg ;
+  semaphore_t *vagas, *itens ;
   // preencher quando necessário
 } mqueue_t ;
 

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <string.h>
 #include "ppos.h"
 #include "ppos_data.h"
 #include "queue.h"
@@ -490,4 +491,109 @@ int sem_destroy (semaphore_t *s)
     leave_cs(&(lock));
     // printf("saiu destroy: %d\n", lock);
     return 0;
+}
+
+int mqueue_create (mqueue_t *queue, int max_msgs, int msg_size)
+{
+    // queue->capacidade = max_msgs;
+    queue->msg_size   = msg_size;
+    queue->next       = queue->prev = queue;
+    queue->msg        = malloc(msg_size);
+    if(!(queue->msg)) return -1;
+
+    if(sem_create(queue->vagas, max_msgs-1)) return -1;
+    if(sem_create(queue->itens, 0)) return -1;
+
+    return 0;
+}
+
+int mqueue_send (mqueue_t *queue, void *msg)
+{
+    if(sem_down(queue->vagas)) return -1;
+
+    mqueue_t *item;
+    if(mqueue_msgs(queue) == 0)
+    {
+        item = queue;
+    }
+    else
+    {
+        item = malloc(sizeof(mqueue_t));
+        item->msg = malloc(queue->msg_size);
+
+        item->next = item->prev = NULL;
+
+        item->msg_size = queue->msg_size;
+
+        item->vagas = queue->vagas;
+        item->itens = queue->itens;
+    }
+
+    if(!item) return -1;
+    if(!(item->msg)) return -1;
+
+    memcpy(item->msg, msg, queue->msg_size);
+
+    if(queue_append((queue_t**)&queue, (queue_t*)item)) return -1;
+
+    if(sem_up(queue->itens)) return -1;
+
+    return 0;
+}
+
+int mqueue_recv (mqueue_t *queue, void *msg)
+{
+    if(sem_down(queue->itens)) return -1;
+
+    memcpy(msg, queue->msg, queue->msg_size);
+
+    if(mqueue_msgs(queue) == 1)
+    {
+        free(queue->msg);
+        queue->msg = NULL;
+    }
+    else
+    {
+        free(queue->msg);
+
+        if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
+
+        free(queue);
+    }
+
+    queue = queue->next; // buffer circular
+
+    if(sem_up(queue->vagas)) return -1;
+
+    return 0;
+}
+
+int mqueue_destroy (mqueue_t *queue)
+{
+    while(queue != queue->next)
+    {
+        free(queue->msg);
+
+        if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
+
+        free(queue);
+    }
+
+    if(sem_destroy(queue->itens)) return -1;
+    if(sem_destroy(queue->vagas)) return -1;
+    free(queue->msg);
+    if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
+    free(queue);
+
+    return 0;
+}
+
+int mqueue_msgs (mqueue_t *queue)
+{
+    int size = queue_size((queue_t*)queue);
+
+    if(size == 1 && !(queue->msg))
+        return 0;
+
+    return size;
 }

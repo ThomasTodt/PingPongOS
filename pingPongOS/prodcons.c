@@ -29,11 +29,11 @@ void produtor(void *arg)
 
         sem_down (&s_buffer);
 
-        if(queue_size(q_buffer) < 5)
-        {
+        // if(queue_size(q_buffer) < 5)
+        // {
             queue_append(&q_buffer, (queue_t*)item);
             printf("%s inseriu %d (tem %d)\n", (char*)arg, item->num, queue_size(q_buffer));
-        }
+        // }
 
         sem_up (&s_buffer);
 
@@ -77,7 +77,7 @@ int main()
 
     sem_create (&s_buffer, 1) ;
     sem_create (&s_item, 0) ;
-    sem_create (&s_vaga, 5) ;
+    sem_create (&s_vaga, 4) ;
 
 
     task_create (&task[0], produtor, "P1") ;
