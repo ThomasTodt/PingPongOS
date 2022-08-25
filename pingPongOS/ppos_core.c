@@ -448,7 +448,7 @@ int sem_up (semaphore_t *s)
     if (!s || s->existe != 1)
     {
         leave_cs(&lock);
-        // printf("erro up\n");
+        printf("erro up\n");
         return -1;
     }
 
@@ -498,11 +498,16 @@ int mqueue_create (mqueue_t *queue, int max_msgs, int msg_size)
     // queue->capacidade = max_msgs;
     queue->msg_size   = msg_size;
     queue->next       = queue->prev = queue;
-    queue->msg        = malloc(msg_size);
-    if(!(queue->msg)) return -1;
+    queue->msg        = NULL;
+    // if(!(queue->msg)) return -1;
+
+    queue->vagas = malloc(sizeof(semaphore_t));
+    queue->itens = malloc(sizeof(semaphore_t));
+    queue->caixa = malloc(sizeof(semaphore_t));
 
     if(sem_create(queue->vagas, max_msgs-1)) return -1;
     if(sem_create(queue->itens, 0)) return -1;
+    if(sem_create(queue->caixa, 1)) return -1;
 
     return 0;
 }
@@ -510,11 +515,16 @@ int mqueue_create (mqueue_t *queue, int max_msgs, int msg_size)
 int mqueue_send (mqueue_t *queue, void *msg)
 {
     if(sem_down(queue->vagas)) return -1;
+    if(sem_down(queue->caixa)) return -1;
+
+    // printf("queue size antes: %d\n", mqueue_msgs(queue));
 
     mqueue_t *item;
-    if(mqueue_msgs(queue) == 0)
+    int tam = mqueue_msgs(queue);
+    if(tam == 0)
     {
         item = queue;
+        item->msg = malloc(queue->msg_size);
     }
     else
     {
@@ -527,15 +537,24 @@ int mqueue_send (mqueue_t *queue, void *msg)
 
         item->vagas = queue->vagas;
         item->itens = queue->itens;
+        item->caixa = queue->caixa;
+
+        // printf("existe: %d\n", item->vagas->existe);
     }
 
     if(!item) return -1;
     if(!(item->msg)) return -1;
 
     memcpy(item->msg, msg, queue->msg_size);
+    // printf("%d\n", *(int*)(item->msg));
+    // printf("%d\n", *(int*)msg);
 
-    if(queue_append((queue_t**)&queue, (queue_t*)item)) return -1;
+    if(tam > 0)
+        if(queue_append((queue_t**)&queue, (queue_t*)item)) return -1;
 
+    // printf("queue size depois: %d\n", mqueue_msgs(queue));
+
+    if(sem_up(queue->caixa)) return -1;
     if(sem_up(queue->itens)) return -1;
 
     return 0;
@@ -544,26 +563,50 @@ int mqueue_send (mqueue_t *queue, void *msg)
 int mqueue_recv (mqueue_t *queue, void *msg)
 {
     if(sem_down(queue->itens)) return -1;
+    if(sem_down(queue->caixa)) return -1;
+    // printf("receba\n");
 
+    // printf("%d\n", *(int*)msg);
+    // printf("%p\n", (queue));
+    // printf("%d\n", *(int*)(queue->msg));
     memcpy(msg, queue->msg, queue->msg_size);
+
+
+    // mqueue_t *tmp = queue;
+
 
     if(mqueue_msgs(queue) == 1)
     {
-        free(queue->msg);
+        // free(queue->msg);
         queue->msg = NULL;
     }
     else
     {
-        free(queue->msg);
+        // free(queue->msg);
+        // queue->msg = NULL;
 
-        if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
+        queue->msg = queue->next->msg;
 
-        free(queue);
+        // printf("recebi\n");
+        // nao remover? soh sobrescrever? nao...
+        if(queue_remove((queue_t**)&queue->next, (queue_t*)queue->next)) return -1;
+        // *tmp = *queue;
+        // printf("recebi\n");
+
+        // free(queue);
     }
 
-    queue = queue->next; // buffer circular
+    // queue = queue->next; // buffer circular
 
+    // printf("aqui 1\n");
+    if(sem_up(queue->caixa)) return -1;
+    // printf("aqui 2\n");
     if(sem_up(queue->vagas)) return -1;
+
+    // printf("saiu recv\n");
+    // printf("queue size depois: %d\n", mqueue_msgs(queue));
+    // printf("%p\n", (queue));
+    // printf("%d\n", *(int*)(queue->msg));
 
     return 0;
 }
@@ -572,15 +615,18 @@ int mqueue_destroy (mqueue_t *queue)
 {
     while(queue != queue->next)
     {
-        free(queue->msg);
+        // free(queue->msg);
 
         if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
 
-        free(queue);
+        // free(queue);
     }
 
-    if(sem_destroy(queue->itens)) return -1;
+    printf("aqui\n");
+
+    if(sem_destroy(queue->itens)) return -1; // tenta destruir sempre mais de uma vez, testar sem->existe
     if(sem_destroy(queue->vagas)) return -1;
+    if(sem_destroy(queue->caixa)) return -1;
     free(queue->msg);
     if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
     free(queue);

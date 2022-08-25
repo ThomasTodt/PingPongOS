@@ -57,7 +57,7 @@ typedef struct mqueue_t
   // int capacidade ;
   int msg_size ;
   void *msg ;
-  semaphore_t *vagas, *itens ;
+  semaphore_t *vagas, *itens, *caixa ;
   // preencher quando necessário
 } mqueue_t ;
 
