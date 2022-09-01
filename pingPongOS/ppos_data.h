@@ -50,14 +50,21 @@ typedef struct
   // preencher quando necessário
 } barrier_t ;
 
+typedef struct mitem_t
+{
+  struct mitem_t *prev, *next ;		// ponteiros para usar em filas
+  void *msg ;
+} mitem_t ;
+
 // estrutura que define uma fila de mensagens
 typedef struct mqueue_t
 {
-  struct mqueue_t *prev, *next ;		// ponteiros para usar em filas
+  // struct mqueue_t *prev, *next ;		// ponteiros para usar em filas
   // int capacidade ;
   int msg_size ;
-  void *msg ;
+  // void *msg ;
   semaphore_t *vagas, *itens, *caixa ;
+  mitem_t *fila ; 
   // preencher quando necessário
 } mqueue_t ;
 

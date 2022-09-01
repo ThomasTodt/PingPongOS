@@ -489,17 +489,13 @@ int sem_destroy (semaphore_t *s)
         return -1;
 
     leave_cs(&(lock));
-    // printf("saiu destroy: %d\n", lock);
     return 0;
 }
 
 int mqueue_create (mqueue_t *queue, int max_msgs, int msg_size)
 {
-    // queue->capacidade = max_msgs;
     queue->msg_size   = msg_size;
-    queue->next       = queue->prev = queue;
-    queue->msg        = NULL;
-    // if(!(queue->msg)) return -1;
+    queue->fila = NULL;
 
     queue->vagas = malloc(sizeof(semaphore_t));
     queue->itens = malloc(sizeof(semaphore_t));
@@ -517,42 +513,15 @@ int mqueue_send (mqueue_t *queue, void *msg)
     if(sem_down(queue->vagas)) return -1;
     if(sem_down(queue->caixa)) return -1;
 
-    // printf("queue size antes: %d\n", mqueue_msgs(queue));
-
-    mqueue_t *item;
-    int tam = mqueue_msgs(queue);
-    if(tam == 0)
-    {
-        item = queue;
-        item->msg = malloc(queue->msg_size);
-    }
-    else
-    {
-        item = malloc(sizeof(mqueue_t));
-        item->msg = malloc(queue->msg_size);
-
-        item->next = item->prev = NULL;
-
-        item->msg_size = queue->msg_size;
-
-        item->vagas = queue->vagas;
-        item->itens = queue->itens;
-        item->caixa = queue->caixa;
-
-        // printf("existe: %d\n", item->vagas->existe);
-    }
+    mitem_t *item = malloc(sizeof(mitem_t));
+    item->msg = malloc(queue->msg_size);
 
     if(!item) return -1;
     if(!(item->msg)) return -1;
 
     memcpy(item->msg, msg, queue->msg_size);
-    // printf("%d\n", *(int*)(item->msg));
-    // printf("%d\n", *(int*)msg);
 
-    if(tam > 0)
-        if(queue_append((queue_t**)&queue, (queue_t*)item)) return -1;
-
-    // printf("queue size depois: %d\n", mqueue_msgs(queue));
+    if(queue_append((queue_t**)&queue->fila, (queue_t*)item)) return -1;
 
     if(sem_up(queue->caixa)) return -1;
     if(sem_up(queue->itens)) return -1;
@@ -564,81 +533,37 @@ int mqueue_recv (mqueue_t *queue, void *msg)
 {
     if(sem_down(queue->itens)) return -1;
     if(sem_down(queue->caixa)) return -1;
-    // printf("receba\n");
 
-    // printf("%d\n", *(int*)msg);
-    // printf("%p\n", (queue));
-    // printf("%d\n", *(int*)(queue->msg));
-    memcpy(msg, queue->msg, queue->msg_size);
+    memcpy(msg, queue->fila->msg, queue->msg_size);
+
+    if(queue_remove((queue_t**)&queue->fila, (queue_t*)queue->fila)) return -1;
 
 
-    // mqueue_t *tmp = queue;
-
-
-    if(mqueue_msgs(queue) == 1)
-    {
-        // free(queue->msg);
-        queue->msg = NULL;
-    }
-    else
-    {
-        // free(queue->msg);
-        // queue->msg = NULL;
-
-        queue->msg = queue->next->msg;
-
-        // printf("recebi\n");
-        // nao remover? soh sobrescrever? nao...
-        if(queue_remove((queue_t**)&queue->next, (queue_t*)queue->next)) return -1;
-        // *tmp = *queue;
-        // printf("recebi\n");
-
-        // free(queue);
-    }
-
-    // queue = queue->next; // buffer circular
-
-    // printf("aqui 1\n");
     if(sem_up(queue->caixa)) return -1;
-    // printf("aqui 2\n");
     if(sem_up(queue->vagas)) return -1;
-
-    // printf("saiu recv\n");
-    // printf("queue size depois: %d\n", mqueue_msgs(queue));
-    // printf("%p\n", (queue));
-    // printf("%d\n", *(int*)(queue->msg));
 
     return 0;
 }
 
 int mqueue_destroy (mqueue_t *queue)
 {
-    while(queue != queue->next)
+    while(mqueue_msgs(queue) > 0)
     {
-        // free(queue->msg);
-
-        if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
-
-        // free(queue);
+        if(queue_remove((queue_t**)&queue->fila, (queue_t*)queue->fila)) return -1;
     }
-
-    printf("aqui\n");
 
     if(sem_destroy(queue->itens)) return -1; // tenta destruir sempre mais de uma vez, testar sem->existe
     if(sem_destroy(queue->vagas)) return -1;
     if(sem_destroy(queue->caixa)) return -1;
-    free(queue->msg);
-    if(queue_remove((queue_t**)&queue, (queue_t*)queue)) return -1;
-    free(queue);
 
     return 0;
 }
 
 int mqueue_msgs (mqueue_t *queue)
 {
-    int size = queue_size((queue_t*)queue);
+    int size = queue_size((queue_t*)queue->fila);
 
-    if(size == 1 && !(queue->msg))
+    if(size == 1 && !(queue->fila))
         return 0;
 
     return size;
